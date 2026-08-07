@@ -50,7 +50,7 @@ export default function AppRoutes() {
       <Route path="/threat-hunting" element={<ThreatHunting />} />
       <Route path="/assets" element={<Assets />} />
       <Route path="/mitre" element={<MITRE />} />
-      <Route path="/compliance" element={<ProtectedRoute roles={ADMIN_ROLES}><Compliance /></ProtectedRoute>} />
+      <Route path="/compliance" element={<Compliance />} />
       <Route path="/search" element={<Search />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/administration" element={<ProtectedRoute roles={ADMIN_ROLES}><Administration /></ProtectedRoute>} />

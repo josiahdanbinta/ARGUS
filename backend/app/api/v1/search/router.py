@@ -32,6 +32,7 @@ def _parse_time_range(time_range: str) -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
 
 
+@router.post("", response_model=SearchResponse)
 @router.post("/", response_model=SearchResponse)
 async def search(
     body: SearchRequest,

@@ -15,6 +15,7 @@ from app.utils import generate_uuid, utcnow
 router = APIRouter(prefix="/api/v1/assets", tags=["Assets"])
 
 
+@router.get("", response_model=PaginatedResponse)
 @router.get("/", response_model=PaginatedResponse)
 async def list_assets(
     page: int = Query(default=1, ge=1),
@@ -52,6 +53,7 @@ async def list_assets(
     )
 
 
+@router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 async def create_asset(
     payload: AssetCreate,

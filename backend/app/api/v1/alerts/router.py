@@ -24,6 +24,7 @@ class LinkIncidentRequest(BaseModel):
     incident_id: str
 
 
+@router.get("", response_model=PaginatedResponse)
 @router.get("/", response_model=PaginatedResponse)
 async def list_alerts(
     page: int = Query(default=1, ge=1),
@@ -85,6 +86,7 @@ async def get_alert(
     return alert
 
 
+@router.post("", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
 async def create_alert(
     data: AlertCreate,

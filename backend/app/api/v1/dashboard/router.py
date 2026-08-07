@@ -14,6 +14,7 @@ from app.schemas.common import DashboardResponse, DashboardWidget
 router = APIRouter(prefix="/api/v1/dashboard", tags=["Dashboard"])
 
 
+@router.get("", response_model=DashboardResponse)
 @router.get("/", response_model=DashboardResponse)
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
