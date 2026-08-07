@@ -9,7 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.config import get_settings
 from app.models.ai import AIMessage, AISession
+from app.models.siem import SIEMEvent
 from app.models.user import User
 from app.schemas.ai import (
     AISessionDetail,
@@ -38,6 +40,7 @@ from app.services.ai_service import ai_service
 from app.utils import generate_uuid, utcnow
 
 router = APIRouter(prefix="/api/v1/ai", tags=["AI Copilot"])
+settings = get_settings()
 
 
 async def _get_or_create_session(db: AsyncSession, user: User, session_id: str | None, model: str, provider: str, agent_type: str) -> AISession:
@@ -69,8 +72,8 @@ async def chat(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    provider = body.provider or "ollama"
-    model = body.model or "llama3.2"
+    provider = body.provider or "opencode"
+    model = body.model or settings.OPENCODE_MODEL
     agent_type = body.agent_type or "general"
 
     session = await _get_or_create_session(
@@ -196,23 +199,67 @@ async def investigate(
 @router.post("/threat-hunt", response_model=ThreatHuntResponse)
 async def threat_hunt(
     body: ThreatHuntRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    provider = ai_service.get_provider()
-    try:
-        response = await provider.chat(
-            [{"role": "user", "content": f"Execute threat hunt: {body.query}. Time range: {body.time_range}. Explain findings."}],
-            system_prompt=ai_service.SECURITY_SYSTEM_PROMPT,
-        )
-        return ThreatHuntResponse(
-            query=body.query,
-            translation=f"Translated query for {body.time_range} window",
-            results_count=1,
-            summary=response[:500],
-            findings=[{"description": response[:500], "severity": "medium"}],
-        )
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Threat hunt failed: {str(e)}")
+    from datetime import datetime, timedelta, timezone
+
+    hours = {"24h": 24, "7d": 168, "30d": 720}.get(body.time_range, 24)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    keywords = [w for w in body.query.replace("_", " ").split() if len(w) > 2]
+    event_type = None
+    if "powershell" in body.query.lower():
+        event_type = "powershell"
+    elif "beacon" in body.query.lower() or "c2" in body.query.lower():
+        event_type = "network"
+    elif "brute" in body.query.lower() or "login" in body.query.lower():
+        event_type = "authentication"
+    elif "mimikatz" in body.query.lower() or "lsass" in body.query.lower():
+        event_type = "process"
+    elif "ransomware" in body.query.lower() or "encrypt" in body.query.lower():
+        event_type = "file"
+
+    conditions = [SIEMEvent.timestamp >= since]
+    if event_type:
+        conditions.append(SIEMEvent.event_type.ilike(f"%{event_type}%"))
+    elif keywords:
+        term = f"%{keywords[0]}%"
+        conditions.append(SIEMEvent.message.ilike(term))
+
+    query = (
+        select(SIEMEvent)
+        .where(*conditions)
+        .order_by(SIEMEvent.timestamp.desc())
+        .limit(25)
+    )
+    result = await db.execute(query)
+    events = result.scalars().all()
+
+    findings = []
+    for event in events:
+        findings.append({
+            "id": event.id,
+            "timestamp": event.timestamp.isoformat() if event.timestamp else utcnow().isoformat(),
+            "eventType": event.event_type,
+            "hostname": event.hostname or "-",
+            "user": event.user or "-",
+            "description": event.message or event.raw_data or event.event_type,
+            "riskScore": event.risk_score or 50,
+            "mitreTechnique": (event.mitre_techniques or "T0000").split(",")[0].strip(),
+        })
+
+    return ThreatHuntResponse(
+        query=body.query,
+        translation=f"Searching SIEM events for '{body.query}' over the last {body.time_range}",
+        results_count=len(findings),
+        summary=(
+            f"Found {len(findings)} matching events. "
+            if findings
+            else "No matching events found. Adjust the query or broaden the time range."
+        ),
+        findings=findings,
+    )
 
 
 @router.post("/generate/sigma", response_model=SigmaGenerateResponse)

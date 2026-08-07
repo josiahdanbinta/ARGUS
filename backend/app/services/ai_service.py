@@ -241,6 +241,73 @@ class AnthropicProvider(AIProvider):
                             continue
 
 
+class OpenCodeProvider(AIProvider):
+    """OpenCode Go — OpenAI-compatible endpoint, Bearer auth with an opencode API key."""
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        self.api_key = api_key or settings.OPENCODE_API_KEY
+        self.base_url = (base_url or settings.OPENCODE_BASE_URL).rstrip("/")
+
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        system_prompt: str | None = None,
+    ) -> str:
+        formatted = messages
+        if system_prompt:
+            formatted = [{"role": "system", "content": system_prompt}] + formatted
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"model": model or settings.OPENCODE_MODEL, "messages": formatted}
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions", json=payload, headers=headers
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+            except httpx.HTTPError as e:
+                logger.error("opencode_error", error=str(e))
+                raise RuntimeError(f"OpenCode API error: {e}")
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        system_prompt: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        formatted = messages
+        if system_prompt:
+            formatted = [{"role": "system", "content": system_prompt}] + formatted
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"model": model or settings.OPENCODE_MODEL, "messages": formatted, "stream": True}
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST", f"{self.base_url}/chat/completions", json=payload, headers=headers
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: ") and line.strip() != "data: [DONE]":
+                        try:
+                            chunk = json.loads(line[6:])
+                            content = chunk["choices"][0].get("delta", {}).get("content", "")
+                            if content:
+                                yield content
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            continue
+
+
 class AIService:
     """Unified AI service with automatic provider selection and fallback."""
 
@@ -258,6 +325,9 @@ class AIService:
         self._init_providers()
 
     def _init_providers(self):
+        if settings.OPENCODE_API_KEY and settings.OPENCODE_API_KEY != "sk-change-me":
+            self._providers["opencode"] = OpenCodeProvider()
+
         self._providers["ollama"] = OllamaProvider()
 
         if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "sk-change-me":
@@ -271,11 +341,19 @@ class AIService:
             return self._providers[provider]
         available = list(self._providers.keys())
         if not available:
-            raise RuntimeError("No AI providers configured. Set OLLAMA_BASE_URL, OPENAI_API_KEY, or ANTHROPIC_API_KEY.")
+            raise RuntimeError("No AI providers configured. Set OPENCODE_API_KEY, OLLAMA_BASE_URL, OPENAI_API_KEY, or ANTHROPIC_API_KEY.")
+        if "opencode" in self._providers:
+            return self._providers["opencode"]
         return self._providers[available[0]]
 
     def list_providers(self) -> list[dict[str, Any]]:
         result = []
+        if "opencode" in self._providers:
+            result.append({
+                "provider": "opencode",
+                "models": [settings.OPENCODE_MODEL, "deepseek-v4-pro", "glm-5.2", "kimi-k3", "grok-4.5"],
+                "available": True,
+            })
         if "ollama" in self._providers:
             result.append({"provider": "ollama", "models": ["llama3.2", "mistral", "qwen2.5", "deepseek-r1", "gemma3"], "available": True})
         if "openai" in self._providers:

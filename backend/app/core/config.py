@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
+    OPENCODE_API_KEY: str = ""
+    OPENCODE_BASE_URL: str = "https://opencode.ai/zen/go/v1"
+    OPENCODE_MODEL: str = "deepseek-v4-flash"
 
     VIRUSTOTAL_API_KEY: str = ""
     ABUSEIPDB_API_KEY: str = ""

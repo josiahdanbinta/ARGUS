@@ -112,7 +112,7 @@ export default function AIAssistant() {
       const { data } = await api.post('/ai/chat', {
         message: content,
         session_id: sessionId,
-        provider: 'openai',
+        provider: 'opencode',
         agent_type: selectedAgent,
       });
       const reply = data.reply ?? data.response ?? data.message ?? data.content ?? 'No response from AI.';
