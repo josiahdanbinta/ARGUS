@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShieldAlert, Clock, Users, AlertTriangle, BarChart3, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import api from '../../api/client';
@@ -8,19 +8,22 @@ interface Incident {
   title: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   analyst: string;
+  assigned_to?: string;
+  status?: string;
+  created_at?: string;
+  closed_at?: string;
   sla: string;
   age: string;
 }
 
-const analystData = [
-  { name: 'J. Smith', cases: 15 },
-  { name: 'A. Jones', cases: 8 },
-  { name: 'M. Williams', cases: 12 },
-  { name: 'K. Brown', cases: 5 },
-  { name: 'T. Davis', cases: 3 },
-].sort((a, b) => b.cases - a.cases);
+interface TimelineEvent {
+  type: string;
+  desc: string;
+  analyst: string;
+  time: string;
+}
 
-const timeline = [
+const fallbackTimeline: TimelineEvent[] = [
   { type: 'alert', desc: 'Critical alert: Ransomware detected on WS-102', analyst: 'SIEM', time: '08:00' },
   { type: 'incident', desc: 'Incident INC-2026-145 created', analyst: 'System', time: '08:05' },
   { type: 'note', desc: 'Investigation started, endpoint isolated', analyst: 'J. Smith', time: '08:15' },
@@ -33,11 +36,19 @@ const timeline = [
 
 const barColors = ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'];
 
+function formatDuration(ms: number): string {
+  const hrs = ms / 3600000;
+  if (hrs < 1) return `${Math.round(hrs * 60)}m`;
+  return `${hrs.toFixed(1)}h`;
+}
+
 export default function SOC() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [unassignedAlerts, setUnassignedAlerts] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [timeline, setTimeline] = useState<TimelineEvent[]>(fallbackTimeline);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -63,9 +74,57 @@ export default function SOC() {
     }
   }, []);
 
+  const fetchTimeline = useCallback(async () => {
+    setTimelineLoading(true);
+    try {
+      const res = await api.get('/incidents/INC-2026-145/timeline');
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        setTimeline(res.data);
+      }
+    } catch {
+      // Keep fallback timeline on error
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchTimeline();
+  }, [fetchData, fetchTimeline]);
+
+  const analystWorkload = useMemo(() => {
+    const counts: Record<string, number> = {};
+    incidents.forEach((inc) => {
+      const key = inc.analyst || inc.assigned_to || 'Unassigned';
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, cases]) => ({ name, cases }))
+      .sort((a, b) => b.cases - a.cases);
+  }, [incidents]);
+
+  const mttrMs = useMemo(() => {
+    const closed = incidents.filter(
+      (inc) => inc.status === 'closed' && inc.created_at && inc.closed_at,
+    );
+    if (closed.length === 0) return null;
+    const total = closed.reduce(
+      (sum, inc) =>
+        sum + (new Date(inc.closed_at!).getTime() - new Date(inc.created_at!).getTime()),
+      0,
+    );
+    return total / closed.length;
+  }, [incidents]);
+
+  const activeAnalysts = useMemo(() => {
+    const unique = new Set(
+      incidents
+        .map((inc) => inc.analyst || inc.assigned_to)
+        .filter(Boolean),
+    );
+    return unique.size;
+  }, [incidents]);
 
   return (
     <div className="space-y-6">
@@ -103,7 +162,9 @@ export default function SOC() {
           </div>
           <div>
             <p className="text-gray-400 text-sm">MTTR</p>
-            <p className="text-2xl font-bold">3.2h</p>
+            <p className="text-2xl font-bold">
+              {loading ? '...' : mttrMs != null ? formatDuration(mttrMs) : 'N/A'}
+            </p>
           </div>
         </div>
         <div className="card flex items-center gap-4">
@@ -112,7 +173,9 @@ export default function SOC() {
           </div>
           <div>
             <p className="text-gray-400 text-sm">Analysts Active</p>
-            <p className="text-2xl font-bold">5</p>
+            <p className="text-2xl font-bold">
+              {loading ? '...' : activeAnalysts}
+            </p>
           </div>
         </div>
       </div>
@@ -161,7 +224,7 @@ export default function SOC() {
                         <td className="py-2.5">
                           <span className={`badge ${c.severity === 'critical' ? 'badge-critical' : c.severity === 'high' ? 'badge-high' : 'badge-medium'}`}>{c.severity}</span>
                         </td>
-                        <td className="py-2.5 text-gray-400">{c.analyst}</td>
+                        <td className="py-2.5 text-gray-400">{c.analyst || c.assigned_to || '-'}</td>
                         <td className="py-2.5">
                           <span className={`badge ${c.sla === 'breached' ? 'badge-critical' : c.sla === 'warning' ? 'badge-high' : 'badge-success'}`}>{c.sla}</span>
                         </td>
@@ -177,22 +240,39 @@ export default function SOC() {
 
         <div className="card">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-argus-400" />Analyst Workload</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={analystData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis type="number" stroke="#64748b" fontSize={12} />
-              <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={12} width={80} />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }} />
-              <Bar dataKey="cases" radius={[0, 4, 4, 0]}>
-                {analystData.map((_, i) => <Cell key={i} fill={barColors[i]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+              Loading...
+            </div>
+          ) : analystWorkload.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-gray-500 text-sm">
+              No analyst data available.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={analystWorkload} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis type="number" stroke="#64748b" fontSize={12} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={12} width={80} />
+                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0' }} />
+                <Bar dataKey="cases" radius={[0, 4, 4, 0]}>
+                  {analystWorkload.map((_, i) => <Cell key={i} fill={barColors[i % barColors.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Clock className="w-5 h-5 text-argus-400" />Investigation Timeline</h2>
+        {timelineLoading && (
+          <div className="flex items-center gap-2 text-gray-400 text-sm mb-3">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Loading timeline...
+          </div>
+        )}
         <div className="space-y-0">
           {timeline.map((event, i) => (
             <div key={i} className="flex gap-4 pb-4 relative">

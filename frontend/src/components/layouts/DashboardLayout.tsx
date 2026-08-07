@@ -26,11 +26,20 @@ const navItems = [
   { path: '/administration', label: 'Administration', icon: Settings },
 ];
 
+const ADMIN_ROLES = ['super_admin', 'security_admin', 'compliance_officer', 'auditor'];
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { logout } = useAuth();
-  const { sidebarOpen, toggleSidebar } = useAppStore();
+  const { sidebarOpen, toggleSidebar, user } = useAppStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  const filteredNavItems = navItems.filter((item) => {
+    if (item.path === '/administration') {
+      return user ? ADMIN_ROLES.includes(user.role) : false;
+    }
+    return true;
+  });
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
@@ -48,7 +57,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             return (
               <Link

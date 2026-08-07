@@ -12,5 +12,6 @@ venv/
 Thumbs.db
 *.swp
 *.swo
+*.tsbuildinfo
 .vscode/
 .idea/

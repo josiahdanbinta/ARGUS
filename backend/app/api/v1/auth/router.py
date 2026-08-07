@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user, get_current_user, rate_limit
 from app.core.security import (
@@ -20,7 +22,7 @@ from app.core.security import (
 )
 from app.models.notification import AuditLog
 from app.models.organization import Organization
-from app.models.user import APIKey, PasswordReset, Session, User
+from app.models.user import APIKey, MFAMethod, PasswordReset, Session, User
 from app.schemas.auth import (
     APIKeyCreate,
     APIKeyCreated,
@@ -41,6 +43,7 @@ from app.schemas.auth import (
 from app.utils import generate_uuid, utcnow
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
@@ -244,6 +247,43 @@ async def password_reset_request(
     db.add(reset)
     await db.commit()
 
+    reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
+
+    def _send_reset_email():
+        import aiosmtplib
+        from email.mime.text import MIMEText
+
+        loop = asyncio.new_event_loop()
+        try:
+            msg = MIMEText(
+                f"Hello {user.full_name},\n\n"
+                f"You requested a password reset. Click the link below to reset your password:\n\n"
+                f"{reset_url}\n\n"
+                f"This link expires in 1 hour.\n\n"
+                f"If you did not request this, please ignore this email.\n\n"
+                f"– ARGUS Security Platform"
+            )
+            msg["Subject"] = "ARGUS - Password Reset Request"
+            msg["From"] = settings.SMTP_FROM
+            msg["To"] = user.email
+            loop.run_until_complete(
+                aiosmtplib.send(
+                    msg,
+                    hostname=settings.SMTP_HOST,
+                    port=settings.SMTP_PORT,
+                    username=settings.SMTP_USER or None,
+                    password=settings.SMTP_PASSWORD or None,
+                )
+            )
+        except Exception:
+            pass
+        finally:
+            loop.close()
+
+    if settings.SMTP_HOST:
+        background_tasks.add_task(_send_reset_email)
+
+    logger.info("password_reset_link", email=user.email, reset_url=reset_url)
     return {"message": "If the email is registered, a reset link has been sent"}
 
 
@@ -277,6 +317,22 @@ async def password_reset_confirm(
     return {"message": "Password has been reset successfully"}
 
 
+@router.get("/password/validate-reset-token")
+async def validate_reset_token(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(
+        select(PasswordReset).where(
+            PasswordReset.token == token,
+            PasswordReset.is_used == False,
+            PasswordReset.expires_at > utcnow(),
+        )
+    )
+    reset = result.scalar_one_or_none()
+    return {"isValid": reset is not None, "message": "Token is valid" if reset else "Token is invalid or expired"}
+
+
 @router.post("/password/change")
 async def password_change(
     body: PasswordChange,
@@ -302,22 +358,66 @@ async def mfa_enable(
     if current_user.mfa_enabled:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA is already enabled")
 
-    secret = secrets.token_hex(32)
+    try:
+        import pyotp  # type: ignore[import-untyped]
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="pyotp is not installed. Install it with: pip install pyotp",
+        )
+
+    secret = pyotp.random_base32()
+    provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=current_user.email, issuer_name="ARGUS"
+    )
+
+    mfa_method = MFAMethod(
+        id=generate_uuid(),
+        user_id=current_user.id,
+        method_type="totp",
+        secret=secret,
+        is_default=True,
+    )
+    db.add(mfa_method)
 
     current_user.mfa_enabled = True
     db.add(current_user)
     await db.commit()
 
-    return {"message": "MFA enabled", "secret": secret}
+    return {"message": "MFA enabled", "secret": secret, "provisioning_uri": provisioning_uri}
 
 
 @router.post("/mfa/verify")
 async def mfa_verify(
     body: MFAVerifyRequest,
     current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     if not current_user.mfa_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled")
+
+    result = await db.execute(
+        select(MFAMethod).where(
+            MFAMethod.user_id == current_user.id,
+            MFAMethod.method_type == "totp",
+        )
+    )
+    mfa_method = result.scalar_one_or_none()
+    if not mfa_method:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No TOTP method configured")
+
+    try:
+        import pyotp  # type: ignore[import-untyped]
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="pyotp is not installed. Install it with: pip install pyotp",
+        )
+
+    totp = pyotp.TOTP(mfa_method.secret)
+    if not totp.verify(body.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
+
     return {"message": "MFA verified successfully"}
 
 
