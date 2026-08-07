@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
 
-    DATABASE_URL: str = "postgresql+asyncpg://ARGUS:ARGUS_secret@localhost:5432/ARGUS"
-    DATABASE_URL_SYNC: str = "postgresql://ARGUS:ARGUS_secret@localhost:5432/ARGUS"
+    DATABASE_URL: str = "postgresql+asyncpg://argus:argus_secret@localhost:5432/argus"
+    DATABASE_URL_SYNC: str = "postgresql://argus:argus_secret@localhost:5432/argus"
     REDIS_URL: str = "redis://localhost:6379/0"
     ELASTICSEARCH_URL: str = "http://localhost:9200"
 
