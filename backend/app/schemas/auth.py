@@ -23,6 +23,14 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=8)
 
 
+class LoginResponse(BaseModel):
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    requires_mfa: bool = False
+    mfa_token: str | None = None
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=100)
@@ -54,6 +62,11 @@ class MFAEnableRequest(BaseModel):
 
 
 class MFAVerifyRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class MFALoginRequest(BaseModel):
+    mfa_token: str
     code: str = Field(..., min_length=6, max_length=6)
 
 

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "noreply@ARGUS.com"
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""

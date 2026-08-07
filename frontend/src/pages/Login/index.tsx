@@ -1,6 +1,6 @@
 ﻿import { useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Zap, Mail, Lock, User, Building2 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Zap, Mail, Lock, User, Building2, ShieldCheck } from 'lucide-react';
+import { useAuth, MFARequiredError } from '../../contexts/AuthContext';
 
 type Mode = 'login' | 'register';
 
@@ -55,12 +55,14 @@ function validate(form: FormData, mode: Mode): FormErrors {
 }
 
 export default function LoginPage() {
-  const { login, register: authRegister } = useAuth();
+  const { login, register: authRegister, mfaRequired } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState<FormData>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
 
   function updateField(field: keyof FormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -97,11 +99,36 @@ export default function LoginPage() {
         });
       }
     } catch (err: unknown) {
+      if (err instanceof MFARequiredError) {
+        setMfaToken(err.mfaToken);
+        setMfaCode('');
+        setSubmitError('');
+        return;
+      }
       const message =
         err instanceof Error
           ? err.message
           : (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
             || 'Authentication failed. Please try again.';
+      setSubmitError(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleMfaSubmit(e?: FormEvent) {
+    e?.preventDefault();
+    if (!mfaToken || mfaCode.length !== 6) return;
+    setLoading(true);
+    setSubmitError('');
+    try {
+      await mfaRequired(mfaToken, mfaCode);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+            || 'Invalid verification code.';
       setSubmitError(message);
     } finally {
       setLoading(false);
@@ -120,6 +147,8 @@ export default function LoginPage() {
     setErrors({});
     setSubmitError('');
     setForm(initialForm);
+    setMfaToken(null);
+    setMfaCode('');
   }
 
   const inputClass =
@@ -166,7 +195,71 @@ export default function LoginPage() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-4" noValidate>
+        {mfaToken ? (
+          <form onSubmit={handleMfaSubmit} onKeyDown={handleKeyDown} className="space-y-4" noValidate>
+            <div className="flex flex-col items-center text-center space-y-2 pb-1">
+              <ShieldCheck className="w-10 h-10 text-argus-500" />
+              <h2 className="text-lg font-semibold text-gray-100">Two-Factor Authentication</h2>
+              <p className="text-sm text-gray-500">
+                Enter the 6-digit code from your authenticator app to complete sign in.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Verification Code</label>
+              <div className="relative">
+                <ShieldCheck className={iconClass} />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={(e) => {
+                    setMfaCode(e.target.value.replace(/\D/g, ''));
+                    setSubmitError('');
+                  }}
+                  placeholder="000000"
+                  autoFocus
+                  className={`${inputClass} text-center tracking-[0.5em] font-mono`}
+                />
+              </div>
+            </div>
+
+            {submitError && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
+                {submitError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || mfaCode.length !== 6}
+              className="w-full bg-argus-600 hover:bg-argus-700 disabled:bg-argus-600/50 disabled:cursor-not-allowed text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              {loading ? (
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                'Verify & Sign In'
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMfaToken(null);
+                setMfaCode('');
+                setSubmitError('');
+              }}
+              className="w-full text-center text-sm text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              ← Back to login
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-4" noValidate>
           {mode === 'register' && (
             <>
               <div>
@@ -278,7 +371,8 @@ export default function LoginPage() {
               'Create Account'
             )}
           </button>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );

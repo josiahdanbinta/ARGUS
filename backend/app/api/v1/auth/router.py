@@ -28,7 +28,9 @@ from app.schemas.auth import (
     APIKeyCreated,
     APIKeyResponse,
     LoginRequest,
+    LoginResponse,
     MFAEnableRequest,
+    MFALoginRequest,
     MFAVerifyRequest,
     PasswordChange,
     PasswordResetConfirm,
@@ -98,12 +100,12 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=Token, dependencies=[Depends(rate_limit)])
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit)])
 async def login(
     body: LoginRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, str | bool | None]:
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
@@ -112,29 +114,15 @@ async def login(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
-    access_token = create_access_token(data={"sub": user.id})
-    refresh_token = create_refresh_token(data={"sub": user.id, "jti": generate_uuid()})
+    # Step 1 of 2: user has MFA enabled — issue a short-lived challenge token
+    if user.mfa_enabled:
+        mfa_token = create_access_token(
+            data={"sub": user.id, "purpose": "mfa"},
+            expires_delta=timedelta(minutes=5),
+        )
+        return {"requires_mfa": True, "mfa_token": mfa_token}
 
-    device_info = request.headers.get("User-Agent")
-    ip_address = request.client.host if request.client else None
-
-    session = Session(
-        id=generate_uuid(),
-        user_id=user.id,
-        refresh_token=refresh_token,
-        device_info=device_info,
-        ip_address=ip_address,
-        is_active=True,
-        expires_at=utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    db.add(session)
-
-    user.last_login = utcnow()
-    db.add(user)
-
-    await db.commit()
-
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return await _issue_tokens(user, request, db)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -283,7 +271,7 @@ async def password_reset_request(
     if settings.SMTP_HOST:
         background_tasks.add_task(_send_reset_email)
 
-    logger.info("password_reset_link", email=user.email, reset_url=reset_url)
+    logger.info("password_reset_link", email=user.email)
     return {"message": "If the email is registered, a reset link has been sent"}
 
 
@@ -312,6 +300,15 @@ async def password_reset_confirm(
     reset.is_used = True
     db.add(user)
     db.add(reset)
+
+    # Revoke all active sessions/tokens for the account (fix #4)
+    session_result = await db.execute(
+        select(Session).where(Session.user_id == reset.user_id, Session.is_active == True)
+    )
+    for s in session_result.scalars().all():
+        s.is_active = False
+        db.add(s)
+
     await db.commit()
 
     return {"message": "Password has been reset successfully"}
@@ -349,6 +346,35 @@ async def password_change(
     return {"message": "Password changed successfully"}
 
 
+async def _issue_tokens(
+    user: User,
+    request: Request | None,
+    db: AsyncSession,
+) -> dict[str, str]:
+    access_token = create_access_token(data={"sub": user.id})
+    refresh_token = create_refresh_token(data={"sub": user.id, "jti": generate_uuid()})
+
+    device_info = request.headers.get("User-Agent") if request else None
+    ip_address = request.client.host if request and request.client else None
+
+    session = Session(
+        id=generate_uuid(),
+        user_id=user.id,
+        refresh_token=refresh_token,
+        device_info=device_info,
+        ip_address=ip_address,
+        is_active=True,
+        expires_at=utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    db.add(session)
+
+    user.last_login = utcnow()
+    db.add(user)
+    await db.commit()
+
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
 @router.post("/mfa/enable")
 async def mfa_enable(
     body: MFAEnableRequest,
@@ -366,25 +392,36 @@ async def mfa_enable(
             detail="pyotp is not installed. Install it with: pip install pyotp",
         )
 
+    result = await db.execute(
+        select(MFAMethod).where(
+            MFAMethod.user_id == current_user.id,
+            MFAMethod.method_type == body.method,
+        )
+    )
+    existing = result.scalar_one_or_none()
+
     secret = pyotp.random_base32()
+    if existing:
+        existing.secret = secret
+        existing.is_default = True
+        db.add(existing)
+    else:
+        db.add(
+            MFAMethod(
+                id=generate_uuid(),
+                user_id=current_user.id,
+                method_type=body.method,
+                secret=secret,
+                is_default=True,
+            )
+        )
+    await db.commit()
+
     provisioning_uri = pyotp.totp.TOTP(secret).provisioning_uri(
         name=current_user.email, issuer_name="ARGUS"
     )
-
-    mfa_method = MFAMethod(
-        id=generate_uuid(),
-        user_id=current_user.id,
-        method_type="totp",
-        secret=secret,
-        is_default=True,
-    )
-    db.add(mfa_method)
-
-    current_user.mfa_enabled = True
-    db.add(current_user)
-    await db.commit()
-
-    return {"message": "MFA enabled", "secret": secret, "provisioning_uri": provisioning_uri}
+    # mfa_enabled only flips to True once /mfa/verify confirms the code.
+    return {"message": "Scan the QR code, then verify with a code", "secret": secret, "provisioning_uri": provisioning_uri}
 
 
 @router.post("/mfa/verify")
@@ -393,12 +430,58 @@ async def mfa_verify(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    if not current_user.mfa_enabled:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled")
+    try:
+        import pyotp  # type: ignore[import-untyped]
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="pyotp is not installed. Install it with: pip install pyotp",
+        )
 
     result = await db.execute(
         select(MFAMethod).where(
             MFAMethod.user_id == current_user.id,
+            MFAMethod.method_type == "totp",
+        )
+    )
+    mfa_method = result.scalar_one_or_none()
+    if not mfa_method:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No TOTP method configured")
+
+    totp = pyotp.TOTP(mfa_method.secret)
+    if not totp.verify(body.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
+
+    # Code verified — confirm/save activation state for the user.
+    if not current_user.mfa_enabled:
+        current_user.mfa_enabled = True
+        db.add(current_user)
+        await db.commit()
+
+    return {"message": "MFA verified successfully"}
+
+
+@router.post("/mfa/login",
+             response_model=Token)
+async def mfa_login(
+    body: MFALoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    payload = decode_token(body.mfa_token)
+    if not payload or payload.get("purpose") != "mfa" or not payload.get("sub"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired MFA challenge")
+
+    result = await db.execute(select(User).where(User.id == payload["sub"]))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+    if not user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled for this account")
+
+    result = await db.execute(
+        select(MFAMethod).where(
+            MFAMethod.user_id == user.id,
             MFAMethod.method_type == "totp",
         )
     )
@@ -414,11 +497,10 @@ async def mfa_verify(
             detail="pyotp is not installed. Install it with: pip install pyotp",
         )
 
-    totp = pyotp.TOTP(mfa_method.secret)
-    if not totp.verify(body.code):
+    if not pyotp.TOTP(mfa_method.secret).verify(body.code):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
 
-    return {"message": "MFA verified successfully"}
+    return await _issue_tokens(user, request, db)
 
 
 @router.post("/api-keys", response_model=APIKeyCreated, status_code=status.HTTP_201_CREATED)

@@ -3,10 +3,20 @@ import api from '../api/client';
 import { useAppStore } from '../store';
 import type { User } from '../types';
 
+export class MFARequiredError extends Error {
+  mfaToken: string;
+  constructor(mfaToken: string) {
+    super('MFA required');
+    this.name = 'MFARequiredError';
+    this.mfaToken = mfaToken;
+  }
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: User | null;
+  mfaRequired: (mfaToken: string, code: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; username: string; full_name: string; password: string; organization_name?: string }) => Promise<void>;
   logout: () => void;
@@ -16,6 +26,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   isLoading: true,
   user: null,
+  mfaRequired: async () => { throw new Error('not implemented'); },
   login: async () => {},
   register: async () => {},
   logout: () => {},
@@ -46,6 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post('/auth/login', { email, password });
+    if (data.requires_mfa) {
+      throw new MFARequiredError(data.mfa_token);
+    }
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    const { data: profile } = await api.get('/auth/profile');
+    setUser(profile);
+    setIsAuthenticated(true);
+  }, [setUser]);
+
+  const mfaRequired = useCallback(async (mfaToken: string, code: string) => {
+    const { data } = await api.post('/auth/mfa/login', { mfa_token: mfaToken, code });
     localStorage.setItem('access_token', data.access_token);
     localStorage.setItem('refresh_token', data.refresh_token);
     const { data: profile } = await api.get('/auth/profile');
@@ -72,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, login, register, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, login, mfaRequired, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
