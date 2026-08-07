@@ -366,7 +366,7 @@ async def update_detection_rule(
     return rule
 
 
-@router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_detection_rule(
     rule_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -471,7 +471,7 @@ async def update_sigma_rule(
     return rule
 
 
-@router.delete("/sigma/{sigma_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/sigma/{sigma_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_sigma_rule(
     sigma_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -551,7 +551,7 @@ async def get_yara_rule(
     return rule
 
 
-@router.delete("/yara/{yara_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/yara/{yara_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_yara_rule(
     yara_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -653,7 +653,7 @@ async def get_ioc(
     return ioc
 
 
-@router.delete("/iocs/{ioc_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/iocs/{ioc_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def deactivate_ioc(
     ioc_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],

@@ -107,7 +107,7 @@ async def update_playbook(
     return PlaybookResponse.model_validate(playbook)
 
 
-@router.delete("/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_playbook(
     playbook_id: str,
     db: AsyncSession = Depends(get_db),
@@ -232,7 +232,7 @@ async def update_workflow(
     return WorkflowResponse.model_validate(workflow)
 
 
-@router.delete("/workflows/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/workflows/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_workflow(
     workflow_id: str,
     db: AsyncSession = Depends(get_db),
@@ -361,7 +361,7 @@ async def update_integration(
     return IntegrationResponse.model_validate(integration)
 
 
-@router.delete("/integrations/{integration_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/integrations/{integration_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_integration(
     integration_id: str,
     db: AsyncSession = Depends(get_db),

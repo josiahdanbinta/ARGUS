@@ -256,7 +256,7 @@ async def update_user(
     return UserResponse.model_validate(user)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_user(
     user_id: str,
     current_user: User = Depends(get_current_superuser),

@@ -125,7 +125,7 @@ async def login(
     return await _issue_tokens(user, request, db)
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def logout(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -542,7 +542,7 @@ async def list_api_keys(
     return list(result.scalars().all())
 
 
-@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def revoke_api_key(
     key_id: str,
     current_user: User = Depends(get_current_active_user),

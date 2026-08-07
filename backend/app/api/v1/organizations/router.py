@@ -122,7 +122,7 @@ async def update_organization(
     return OrganizationResponse.model_validate(org)
 
 
-@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_organization(
     org_id: str,
     current_user: User = Depends(get_current_superuser),
