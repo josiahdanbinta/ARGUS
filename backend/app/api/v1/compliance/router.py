@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/compliance", tags=["Compliance"])
 
 COMPLIANCE_FRAMEWORKS = {
     "iso27001": {"name": "ISO 27001", "controls": 114},

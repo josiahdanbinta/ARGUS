@@ -10,7 +10,7 @@ from app.models.siem import MITRETechnique
 from app.schemas.siem import MITRETechniqueResponse
 from app.schemas.common import PaginatedResponse
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/mitre", tags=["MITRE ATT&CK"])
 
 
 @router.get("/techniques", response_model=list[MITRETechniqueResponse])

@@ -11,7 +11,7 @@ from app.models.siem import SIEMEvent
 from app.schemas.common import PaginatedResponse
 from app.utils import utcnow
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/reporting", tags=["Reporting"])
 
 
 @router.get("/incidents")

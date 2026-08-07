@@ -12,6 +12,9 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+if not settings.JWT_SECRET_KEY and settings.ENVIRONMENT != "development":
+    raise RuntimeError("JWT_SECRET_KEY must be set in non-development environments")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 argon2_hasher = PasswordHasher()
 

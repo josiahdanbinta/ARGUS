@@ -13,7 +13,7 @@ from app.schemas.common import PaginatedResponse
 from app.utils import generate_uuid, utcnow
 from app.workers.tasks import sync_threat_intel
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/threatintel", tags=["Threat Intelligence"])
 
 
 @router.get("/feeds", response_model=PaginatedResponse)

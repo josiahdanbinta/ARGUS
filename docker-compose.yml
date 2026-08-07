@@ -25,11 +25,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ARGUS:ARGUS_secret@postgres:5432/ARGUS
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus_secret}@postgres:5432/${POSTGRES_DB:-argus}
       - REDIS_URL=redis://redis:6379/0
       - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,11 +66,11 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: ARGUS-postgres
+    container_name: argus-postgres
     environment:
-      POSTGRES_USER: ARGUS
-      POSTGRES_PASSWORD: ARGUS_secret
-      POSTGRES_DB: ARGUS
+      POSTGRES_USER: ${POSTGRES_USER:-argus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-argus_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-argus}
     ports:
       - "5432:5432"
     volumes:
@@ -135,12 +138,16 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ARGUS-celery
+    container_name: argus-celery
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ARGUS:ARGUS_secret@postgres:5432/ARGUS
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus_secret}@postgres:5432/${POSTGRES_DB:-argus}
       - REDIS_URL=redis://redis:6379/0
       - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
     depends_on:
       - postgres
       - redis
@@ -155,11 +162,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ARGUS-celery-beat
+    container_name: argus-celery-beat
     command: celery -A app.workers.celery_app beat --loglevel=info
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ARGUS:ARGUS_secret@postgres:5432/ARGUS
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus_secret}@postgres:5432/${POSTGRES_DB:-argus}
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     depends_on:
       - postgres
       - redis
