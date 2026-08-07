@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Zap,
   Activity,
@@ -56,11 +57,19 @@ interface MetricCardProps {
   label: string;
   value: string | number;
   accent: string;
+  to?: string;
+  onClick?: () => void;
 }
 
-function MetricCard({ icon: Icon, label, value, accent }: MetricCardProps) {
+function MetricCard({ icon: Icon, label, value, accent, to, onClick }: MetricCardProps) {
   return (
-    <div className="card p-5 flex items-start gap-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`card p-5 flex items-start gap-4 text-left w-full transition-colors ${
+        to || onClick ? 'hover:border-argus-500/50 hover:bg-surface-light cursor-pointer' : 'cursor-default'
+      }`}
+    >
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${accent}1a` }}
@@ -71,7 +80,7 @@ function MetricCard({ icon: Icon, label, value, accent }: MetricCardProps) {
         <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{label}</p>
         <p className="text-2xl font-bold text-gray-100 mt-0.5">{value}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -91,6 +100,7 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const fetchMetrics = useCallback(async () => {
     setLoading(true);
@@ -146,14 +156,14 @@ export default function DashboardPage() {
       <section>
         <h2 className="text-lg font-semibold text-gray-200 mb-4">Overview</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard icon={Zap} label="Total Events" value={metrics?.total_events?.toLocaleString() ?? '--'} accent="#3b82f6" />
-          <MetricCard icon={Activity} label="Events/sec" value={metrics?.events_per_second ?? '--'} accent="#22c55e" />
-          <MetricCard icon={AlertTriangle} label="Critical Alerts" value={metrics?.critical_alerts ?? '--'} accent="#ef4444" />
-          <MetricCard icon={ShieldAlert} label="Active Incidents" value={metrics?.active_incidents ?? '--'} accent="#f97316" />
-          <MetricCard icon={Radio} label="Endpoints Online" value={metrics?.endpoint_count ?? '--'} accent="#3b82f6" />
-          <MetricCard icon={Globe} label="Threat Feeds" value={metrics?.threat_feed_status ?? '--'} accent="#22c55e" />
-          <MetricCard icon={TrendingUp} label="Risk Score" value={metrics?.risk_score?.toFixed(1) ?? '--'} accent="#eab308" />
-          <MetricCard icon={Shield} label="MITRE Coverage" value="87%" accent="#8b5cf6" />
+          <MetricCard icon={Zap} label="Total Events" value={metrics?.total_events?.toLocaleString() ?? '--'} accent="#3b82f6" onClick={() => navigate('/siem')} />
+          <MetricCard icon={Activity} label="Events/sec" value={metrics?.events_per_second ?? '--'} accent="#22c55e" onClick={() => navigate('/siem')} />
+          <MetricCard icon={AlertTriangle} label="Critical Alerts" value={metrics?.critical_alerts ?? '--'} accent="#ef4444" onClick={() => navigate('/alerts')} />
+          <MetricCard icon={ShieldAlert} label="Active Incidents" value={metrics?.active_incidents ?? '--'} accent="#f97316" onClick={() => navigate('/incidents')} />
+          <MetricCard icon={Radio} label="Endpoints Online" value={metrics?.endpoint_count ?? '--'} accent="#3b82f6" onClick={() => navigate('/assets')} />
+          <MetricCard icon={Globe} label="Threat Feeds" value={metrics?.threat_feed_status ?? '--'} accent="#22c55e" onClick={() => navigate('/threat-intelligence')} />
+          <MetricCard icon={TrendingUp} label="Risk Score" value={metrics?.risk_score?.toFixed(1) ?? '--'} accent="#eab308" onClick={() => navigate('/incidents')} />
+          <MetricCard icon={Shield} label="MITRE Coverage" value="87%" accent="#8b5cf6" onClick={() => navigate('/mitre')} />
         </div>
       </section>
 

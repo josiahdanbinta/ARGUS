@@ -124,7 +124,9 @@ export default function ThreatHuntingPage() {
     setError(null);
     try {
       const { data } = await api.post('/ai/threat-hunt', { query });
-      const items: HuntResult[] = Array.isArray(data) ? data : data.items ?? data.data ?? data.results ?? [];
+      const items: HuntResult[] = Array.isArray(data)
+        ? data
+        : data.findings ?? data.items ?? data.results ?? [];
       setResults(items);
     } catch {
       setError('Threat hunt failed. Please try again.');
@@ -141,7 +143,9 @@ export default function ThreatHuntingPage() {
     setError(null);
     try {
       const { data } = await api.post('/ai/threat-hunt', { query });
-      const items: HuntResult[] = Array.isArray(data) ? data : data.items ?? data.data ?? data.results ?? [];
+      const items: HuntResult[] = Array.isArray(data)
+        ? data
+        : data.findings ?? data.items ?? data.results ?? [];
       setResults(items);
     } catch {
       setError('Threat hunt failed. Please try again.');

@@ -63,7 +63,7 @@ class IncidentBase(BaseModel):
 
 
 class IncidentCreate(IncidentBase):
-    organization_id: str
+    organization_id: str | None = None
 
 
 class IncidentUpdate(BaseModel):

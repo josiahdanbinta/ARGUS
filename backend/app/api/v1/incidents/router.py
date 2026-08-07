@@ -79,11 +79,14 @@ async def create_incident(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    payload = data.model_dump()
+    if not payload.get("organization_id"):
+        payload["organization_id"] = current_user.organization_id
     incident = Incident(
         id=generate_uuid(),
         created_at=utcnow(),
         updated_at=utcnow(),
-        **data.model_dump(),
+        **payload,
     )
     db.add(incident)
     await db.commit()

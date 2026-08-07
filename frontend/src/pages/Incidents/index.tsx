@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldAlert, Plus, Filter, Search, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Plus, Filter, Search, Loader2, AlertCircle, RefreshCw, X } from 'lucide-react';
 import api from '../../api/client';
 import type { Incident, PaginatedResponse } from '../../types';
 
@@ -30,6 +30,18 @@ export default function Incidents() {
   const [severityFilter, setSeverityFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    severity: 'medium',
+    risk_score: 50,
+    mitre_techniques: '',
+    affected_assets: '',
+    affected_users: '',
+  });
 
   const fetchIncidents = useCallback(async () => {
     setLoading(true);
@@ -50,6 +62,41 @@ export default function Incidents() {
   useEffect(() => {
     fetchIncidents();
   }, [fetchIncidents]);
+
+  const openModal = useCallback(() => {
+    setForm({
+      title: '',
+      description: '',
+      severity: 'medium',
+      risk_score: 50,
+      mitre_techniques: '',
+      affected_assets: '',
+      affected_users: '',
+    });
+    setCreateError(null);
+    setShowModal(true);
+  }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setCreateError('Title is required');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await api.post('/incidents', form);
+      setShowModal(false);
+      await fetchIncidents();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to create incident';
+      setCreateError(message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const displayIncidents = useMemo(() => {
     return [...incidents]
@@ -75,7 +122,10 @@ export default function Incidents() {
             {displayIncidents.length}
           </span>
         </div>
-        <button className="inline-flex items-center gap-2 px-4 py-2 bg-argus-600 hover:bg-argus-700 text-white text-sm font-medium rounded-lg transition-colors">
+        <button
+          onClick={openModal}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-argus-600 hover:bg-argus-700 text-white text-sm font-medium rounded-lg transition-colors"
+        >
           <Plus className="w-4 h-4" />
           Create Incident
         </button>
@@ -204,6 +254,153 @@ export default function Incidents() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-surface-light border border-surface-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border">
+              <h2 className="text-lg font-semibold text-gray-100">Create Incident</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-500 hover:text-gray-300 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                  Title <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g., Ransomware infection on payroll server"
+                  className="input w-full"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Brief summary of the incident"
+                  rows={3}
+                  className="input w-full resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                    Severity
+                  </label>
+                  <select
+                    value={form.severity}
+                    onChange={(e) => setForm({ ...form, severity: e.target.value })}
+                    className="input w-full"
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="informational">Informational</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                    Risk Score
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.risk_score}
+                    onChange={(e) => setForm({ ...form, risk_score: Number(e.target.value) })}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                  MITRE ATT&CK Techniques
+                </label>
+                <input
+                  type="text"
+                  value={form.mitre_techniques}
+                  onChange={(e) => setForm({ ...form, mitre_techniques: e.target.value })}
+                  placeholder="e.g., T1486, T1059.001"
+                  className="input w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                  Affected Assets
+                </label>
+                <input
+                  type="text"
+                  value={form.affected_assets}
+                  onChange={(e) => setForm({ ...form, affected_assets: e.target.value })}
+                  placeholder="e.g., payroll-server-01, dc-02"
+                  className="input w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+                  Affected Users
+                </label>
+                <input
+                  type="text"
+                  value={form.affected_users}
+                  onChange={(e) => setForm({ ...form, affected_users: e.target.value })}
+                  placeholder="e.g., j.doe@example.com"
+                  className="input w-full"
+                />
+              </div>
+
+              {createError && (
+                <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {createError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-surface-border text-gray-300 hover:bg-surface-lighter transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-argus-600 hover:bg-argus-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Incident'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

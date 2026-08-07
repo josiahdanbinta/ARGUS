@@ -18,6 +18,7 @@ import Reports from '../pages/Reports';
 import Administration from '../pages/Administration';
 import AIAssistant from '../pages/AIAssistant';
 import ThreatIntelligence from '../pages/ThreatIntelligence';
+import Agents from '../pages/Agents';
 
 const ADMIN_ROLES = ['super_admin', 'security_admin', 'compliance_officer', 'auditor'];
 
@@ -56,6 +57,7 @@ export default function AppRoutes() {
       <Route path="/administration" element={<ProtectedRoute roles={ADMIN_ROLES}><Administration /></ProtectedRoute>} />
       <Route path="/ai-assistant" element={<AIAssistant />} />
       <Route path="/threat-intelligence" element={<ThreatIntelligence />} />
+      <Route path="/agents" element={<Agents />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
