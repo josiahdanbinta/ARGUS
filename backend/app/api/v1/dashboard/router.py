@@ -103,7 +103,7 @@ async def get_dashboard(
     total_assets, endpoint_count = asset_counts.one()
 
     endpoint_status_rows = await db.execute(
-        select(Endpoint.status, func.count(Endpoint.id)).group_by(Endpoint.status)
+        select(Endpoint.agent_status, func.count(Endpoint.id)).group_by(Endpoint.agent_status)
     )
     endpoint_status = {status or "unknown": cnt for status, cnt in endpoint_status_rows.all()}
 
