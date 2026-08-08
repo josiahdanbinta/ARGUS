@@ -33,6 +33,7 @@ from app.api.v1.mitre.router import router as mitre_router
 from app.api.v1.compliance.router import router as compliance_router
 from app.api.v1.notifications.router import router as notifications_router
 from app.api.v1.reporting.router import router as reporting_router
+from app.api.v1.detections.router import router as detections_router
 
 settings = get_settings()
 setup_logging()
@@ -115,6 +116,7 @@ app.include_router(mitre_router)
 app.include_router(compliance_router)
 app.include_router(notifications_router)
 app.include_router(reporting_router)
+app.include_router(detections_router)
 
 
 @app.get("/api/v1/health")

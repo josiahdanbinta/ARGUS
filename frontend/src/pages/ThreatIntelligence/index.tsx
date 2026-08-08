@@ -27,9 +27,49 @@ interface IOC {
 interface Feed {
   id: string;
   name: string;
-  status: string;
+  status: 'Active' | 'Syncing' | 'Inactive';
   lastSync: string;
   iocCount: number;
+}
+
+function capitalizeType(raw: string): string {
+  const lower = (raw ?? '').toLowerCase();
+  const map: Record<string, string> = {
+    ipv4: 'IPv4',
+    ip: 'IPv4',
+    domain: 'Domain',
+    url: 'URL',
+    hash: 'Hash',
+    md5: 'Hash',
+    sha1: 'Hash',
+    sha256: 'Hash',
+    email: 'Email',
+  };
+  return map[lower] ?? raw;
+}
+
+function mapIOC(raw: any): IOC {
+  return {
+    id: raw.id,
+    type: capitalizeType(raw.ioc_type ?? raw.type ?? '') as IOC['type'],
+    value: raw.value ?? '',
+    description: raw.description ?? '',
+    severity: raw.severity ?? 'low',
+    confidence: raw.confidence ?? 0,
+    source: raw.source ?? '-',
+    firstSeen: raw.first_seen ?? raw.created_at ?? '',
+    lastSeen: raw.last_seen ?? '',
+  };
+}
+
+function mapFeed(raw: any): Feed {
+  return {
+    id: raw.id,
+    name: raw.name,
+    status: raw.is_enabled === true ? 'Active' : 'Inactive',
+    lastSync: raw.last_synced ?? '',
+    iocCount: 0,
+  };
 }
 
 const IOC_TYPE_COLORS: Record<string, string> = {
@@ -54,7 +94,10 @@ const FEED_STATUS_COLORS: Record<string, string> = {
 };
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -63,7 +106,10 @@ function formatDate(dateStr: string): string {
 }
 
 function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
@@ -117,8 +163,8 @@ export default function ThreatIntelligencePage() {
     setIocError(null);
     try {
       const { data } = await api.get('/siem/iocs', { params: { page: 1, page_size: 50 } });
-      const items: IOC[] = Array.isArray(data) ? data : data.items ?? data.data ?? [];
-      setIocs(items);
+      const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
+      setIocs(items.map(mapIOC));
     } catch {
       setIocError('Failed to load IOCs');
     } finally {
@@ -131,8 +177,8 @@ export default function ThreatIntelligencePage() {
     setFeedsError(null);
     try {
       const { data } = await api.get('/threatintel/feeds');
-      const items: Feed[] = Array.isArray(data) ? data : data.items ?? data.data ?? [];
-      setFeeds(items);
+      const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
+      setFeeds(items.map(mapFeed));
     } catch {
       setFeedsError('Failed to load threat feeds');
     } finally {
@@ -163,7 +209,12 @@ export default function ThreatIntelligencePage() {
 
   const totalIOCs = iocs.length;
   const activeFeeds = feeds.filter((f) => f.status === 'Active').length;
-  const lastSyncTimes = feeds.map((f) => new Date(f.lastSync).getTime());
+  const lastSyncTimes = feeds
+    .map((f) => {
+      const t = new Date(f.lastSync).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    })
+    .filter((t) => t > 0);
   const latestSync = lastSyncTimes.length > 0
     ? relativeTime(new Date(Math.max(...lastSyncTimes)).toISOString())
     : '—';

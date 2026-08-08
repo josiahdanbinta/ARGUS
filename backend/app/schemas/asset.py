@@ -58,6 +58,7 @@ class AssetResponse(BaseModel):
     risk_score: int
     last_seen: datetime | None = None
     is_active: bool
+    endpoint: "EndpointResponse | None" = None
     created_at: datetime
     updated_at: datetime
 
@@ -80,6 +81,9 @@ class EndpointUpdate(BaseModel):
 class EndpointResponse(BaseModel):
     id: str
     asset_id: str
+    hostname: str | None = None
+    operating_system: str | None = None
+    ip_address: str | None = None
     agent_version: str | None = None
     agent_status: str
     isolation_status: str

@@ -51,9 +51,10 @@ async def _get_or_create_session(db: AsyncSession, user: User, session_id: str |
         session = result.scalar_one_or_none()
         if session:
             return session
+        raise HTTPException(status_code=404, detail="Session not found")
 
     session = AISession(
-        id=session_id or generate_uuid(),
+        id=generate_uuid(),
         user_id=user.id,
         organization_id=user.organization_id,
         title=None,
@@ -115,7 +116,7 @@ async def chat(
     )
     db.add(assistant_msg)
 
-    if not session.title and history_result is None:
+    if not session.title and not history:
         session.title = body.message[:100]
 
     await db.flush()
@@ -286,9 +287,8 @@ async def summarize(
     current_user: User = Depends(get_current_user),
 ):
     target = f"incident {body.incident_id}" if body.incident_id else f"alert {body.alert_id}" if body.alert_id else "the investigation"
-    provider = ai_service.get_provider()
     try:
-        response = await provider.chat(
+        response = await ai_service.chat_with_fallback(
             [{"role": "user", "content": f"Summarize {target} for a {body.format} audience. Include key findings and recommendations."}],
             system_prompt=ai_service.SECURITY_SYSTEM_PROMPT,
         )
@@ -309,9 +309,8 @@ async def explain(
     current_user: User = Depends(get_current_user),
 ):
     target = f"alert {body.alert_id}" if body.alert_id else f"event {body.event_id}" if body.event_id else body.question or "this item"
-    provider = ai_service.get_provider()
     try:
-        response = await provider.chat(
+        response = await ai_service.chat_with_fallback(
             [{"role": "user", "content": f"Explain {target} to a SOC analyst. Include severity justification, related MITRE techniques, and suggested actions."}],
             system_prompt=ai_service.SECURITY_SYSTEM_PROMPT,
         )
@@ -330,9 +329,8 @@ async def generate_report(
     body: ReportRequest,
     current_user: User = Depends(get_current_user),
 ):
-    provider = ai_service.get_provider()
     try:
-        response = await provider.chat(
+        response = await ai_service.chat_with_fallback(
             [{"role": "user", "content": f"Generate a {body.report_type} security report for the last {body.time_range}. Format: {body.format}."}],
             system_prompt=ai_service.SECURITY_SYSTEM_PROMPT,
         )

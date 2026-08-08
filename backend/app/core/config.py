@@ -24,11 +24,20 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    FRONTEND_URL: str = "http://localhost:5173"
+
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@ARGUS.com"
+    SMTP_USE_TLS: bool = True
+
+    SLACK_WEBHOOK_URL: str = ""
+    SLACK_CHANNEL: str = "#security-alerts"
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
@@ -38,6 +47,14 @@ class Settings(BaseSettings):
     OPENCODE_API_KEY: str = ""
     OPENCODE_BASE_URL: str = "https://opencode.ai/zen/go/v1"
     OPENCODE_MODEL: str = "deepseek-v4-flash"
+
+    AZURE_OPENAI_API_KEY: str = ""
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_MODEL: str = "gpt-4o-mini"
+    AZURE_OPENAI_API_VERSION: str = "2024-10-21"
+    AZURE_OPENAI_DEPLOYMENT: str = ""
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     VIRUSTOTAL_API_KEY: str = ""
     ABUSEIPDB_API_KEY: str = ""

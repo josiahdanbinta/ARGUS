@@ -7,13 +7,16 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.core.database import get_db
 from app.core.redis import get_redis
-from app.models.user import User
+from app.models.user import Permission, Role, User
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -26,6 +29,8 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -62,14 +67,10 @@ def require_permission(permission: str):
     ) -> User:
         if current_user.role == "super_admin":
             return current_user
-        result = await db.execute(
-            select(User).where(User.id == current_user.id)
-        )
-        user = result.scalar_one()
-        user_permissions = await get_user_permissions(user, db)
+        user_permissions = await get_user_permissions(current_user, db)
         if permission not in user_permissions:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-        return user
+        return current_user
     return permission_checker
 
 
@@ -77,7 +78,10 @@ async def get_user_permissions(user: User, db: AsyncSession) -> set[str]:
     if user.role == "super_admin":
         return {"*"}
     permissions: set[str] = set()
-    role_obj = user.role_obj
+    result = await db.execute(
+        select(Role).where(Role.name == user.role).options(selectinload(Role.permissions))
+    )
+    role_obj = result.scalar_one_or_none()
     if role_obj:
         for perm in role_obj.permissions:
             permissions.add(perm.name)
@@ -97,8 +101,11 @@ async def rate_limit(
 ) -> None:
     client_ip = request.client.host if request.client else "unknown"
     key = f"rate_limit:{client_ip}"
-    current = await redis.incr(key)
-    if current == 1:
-        await redis.expire(key, settings.RATE_LIMIT_PERIOD)
-    if current > settings.RATE_LIMIT_REQUESTS:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+    try:
+        current = await redis.incr(key)
+        if current == 1:
+            await redis.expire(key, settings.RATE_LIMIT_PERIOD)
+        if current > settings.RATE_LIMIT_REQUESTS:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+    except Exception as e:
+        logger.warning("rate_limit_unavailable", ip=client_ip, error=str(e))

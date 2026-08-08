@@ -93,6 +93,13 @@ class IncidentResponse(IncidentBase):
     model_config = {"from_attributes": True}
 
 
+class IncidentDetailResponse(IncidentResponse):
+    notes: list["IncidentNoteResponse"] = []
+    tasks: list["IncidentTaskResponse"] = []
+    evidence: list["EvidenceResponse"] = []
+    timeline_events: list["TimelineEventResponse"] = []
+
+
 class IncidentNoteBase(BaseModel):
     content: str
 

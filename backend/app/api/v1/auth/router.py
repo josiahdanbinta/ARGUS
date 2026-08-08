@@ -235,7 +235,7 @@ async def password_reset_request(
     db.add(reset)
     await db.commit()
 
-    reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
 
     def _send_reset_email():
         import aiosmtplib
@@ -270,9 +270,13 @@ async def password_reset_request(
 
     if settings.SMTP_HOST:
         background_tasks.add_task(_send_reset_email)
+        logger.info("password_reset_link", email=user.email)
+        return {"message": "If the email is registered, a reset link has been sent"}
 
-    logger.info("password_reset_link", email=user.email)
-    return {"message": "If the email is registered, a reset link has been sent"}
+    # SMTP is not configured — surface the reset link directly so the flow
+    # still works (e.g. local/demo deployments). Only done when email is off.
+    logger.info("password_reset_link_no_smtp", email=user.email)
+    return {"message": "Password reset link", "reset_link": reset_url}
 
 
 @router.post("/password/reset-confirm")

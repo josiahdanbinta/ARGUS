@@ -5,7 +5,7 @@ from app.models.siem import SIEMEvent, DetectionRule, SigmaRule, YaraRule, IOC, 
 from app.models.soc import Alert, Incident, IncidentNote, IncidentTask, Evidence, TimelineEvent
 from app.models.soar import Playbook, Workflow, AutomationJob, Integration
 from app.models.ai import AISession, AIMessage, Embedding, KnowledgeBase
-from app.models.notification import Notification, AuditLog
+from app.models.notification import Notification, AuditLog, NotificationChannel
 
 __all__ = [
     "User", "Role", "Permission", "Session", "APIKey", "MFAMethod", "PasswordReset", "OAuthAccount",
@@ -15,5 +15,5 @@ __all__ = [
     "Alert", "Incident", "IncidentNote", "IncidentTask", "Evidence", "TimelineEvent",
     "Playbook", "Workflow", "AutomationJob", "Integration",
     "AISession", "AIMessage", "Embedding", "KnowledgeBase",
-    "Notification", "AuditLog",
+    "Notification", "AuditLog", "NotificationChannel",
 ]

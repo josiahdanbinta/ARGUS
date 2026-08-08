@@ -127,9 +127,15 @@ export interface IncidentTask {
 }
 
 export interface TimelineEvent {
-  type: string;
+  id: string;
+  incident_id: string;
+  event_type: string;
   title: string;
-  time: string;
+  description: string | null;
+  source: string | null;
+  user: string | null;
+  timestamp: string;
+  created_at: string;
 }
 
 export interface Evidence {
@@ -186,8 +192,25 @@ export interface DashboardMetrics {
   total_events: number;
   events_per_second: number;
   critical_alerts: number;
+  active_alerts: number;
   active_incidents: number;
+  total_incidents: number;
   endpoint_count: number;
+  total_assets: number;
   threat_feed_status: string;
   risk_score: number;
+  alert_severity: Record<string, number>;
+  incident_status: Record<string, number>;
+  recent_incidents: Array<{
+    id: string;
+    title: string;
+    severity: string;
+    status: string;
+    created_at: string | null;
+  }>;
+  top_sources: Array<{ source: string; count: number }>;
+  top_categories: Array<{ category: string; count: number }>;
+  endpoint_status: Record<string, number>;
+  total_iocs: number;
+  critical_iocs: number;
 }

@@ -11,7 +11,7 @@ from app.core.dependencies import get_current_user
 from app.models.soc import Incident, IncidentNote, IncidentTask, Evidence, TimelineEvent
 from app.models.notification import AuditLog
 from app.schemas.soc import (
-    IncidentCreate, IncidentUpdate, IncidentResponse,
+    IncidentCreate, IncidentUpdate, IncidentResponse, IncidentDetailResponse,
     IncidentNoteCreate, IncidentNoteResponse,
     IncidentTaskCreate, IncidentTaskUpdate, IncidentTaskResponse,
     EvidenceCreate, EvidenceResponse,
@@ -82,6 +82,11 @@ async def create_incident(
     payload = data.model_dump()
     if not payload.get("organization_id"):
         payload["organization_id"] = current_user.organization_id
+    if not payload.get("organization_id"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="organization_id is required",
+        )
     incident = Incident(
         id=generate_uuid(),
         created_at=utcnow(),
@@ -94,7 +99,7 @@ async def create_incident(
     return incident
 
 
-@router.get("/{incident_id}", response_model=IncidentResponse)
+@router.get("/{incident_id}", response_model=IncidentDetailResponse)
 async def get_incident(
     incident_id: str,
     db: AsyncSession = Depends(get_db),
@@ -154,7 +159,7 @@ async def add_note(
         id=generate_uuid(),
         incident_id=incident_id,
         content=body.content,
-        created_by=current_user.id,
+        user_id=current_user.id,
         created_at=utcnow(),
     )
     db.add(note)
@@ -190,17 +195,31 @@ async def create_task(
     if not incident:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
+    payload = data.model_dump(exclude={"incident_id"})
     task = IncidentTask(
         id=generate_uuid(),
         incident_id=incident_id,
         created_at=utcnow(),
-        updated_at=utcnow(),
-        **data.model_dump(),
+        **payload,
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
     return task
+
+
+@router.get("/{incident_id}/tasks", response_model=list[IncidentTaskResponse])
+async def list_tasks(
+    incident_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await db.execute(
+        select(IncidentTask)
+        .where(IncidentTask.incident_id == incident_id)
+        .order_by(IncidentTask.created_at.desc())
+    )
+    return result.scalars().all()
 
 
 @router.patch("/{incident_id}/tasks/{task_id}", response_model=IncidentTaskResponse)
@@ -225,10 +244,23 @@ async def update_task(
     for field, value in update_data.items():
         setattr(task, field, value)
 
-    task.updated_at = utcnow()
     await db.commit()
     await db.refresh(task)
     return task
+
+
+@router.get("/{incident_id}/evidence", response_model=list[EvidenceResponse])
+async def list_evidence(
+    incident_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Evidence)
+        .where(Evidence.incident_id == incident_id)
+        .order_by(Evidence.created_at.desc())
+    )
+    return result.scalars().all()
 
 
 @router.post("/{incident_id}/evidence", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
@@ -247,7 +279,7 @@ async def add_evidence(
         id=generate_uuid(),
         incident_id=incident_id,
         created_at=utcnow(),
-        **data.model_dump(),
+        **data.model_dump(exclude={"incident_id"}),
     )
     db.add(evidence)
     await db.commit()
@@ -271,7 +303,7 @@ async def add_timeline_event(
         id=generate_uuid(),
         incident_id=incident_id,
         timestamp=utcnow(),
-        **data.model_dump(),
+        **data.model_dump(exclude={"incident_id", "timestamp"}),
     )
     db.add(event)
     await db.commit()

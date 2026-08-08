@@ -36,6 +36,34 @@ const fallbackTimeline: TimelineEvent[] = [
 
 const barColors = ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'];
 
+function mapIncident(raw: any): Incident {
+  const created = raw.created_at ? new Date(raw.created_at).getTime() : Date.now();
+  const ageMs = Date.now() - created;
+  const closed = raw.closed_at && raw.status === 'closed' ? new Date(raw.closed_at).getTime() : null;
+  const sla = raw.status === 'closed' ? 'closed' : ageMs > 86400000 ? 'breached' : ageMs > 43200000 ? 'warning' : 'ok';
+  return {
+    id: raw.id ?? '',
+    title: raw.title ?? '',
+    severity: raw.severity ?? 'medium',
+    analyst: raw.assigned_to ?? '',
+    assigned_to: raw.assigned_to ?? '',
+    status: raw.status ?? '',
+    created_at: raw.created_at ?? '',
+    closed_at: raw.closed_at ?? '',
+    sla,
+    age: closed ? `${Math.max(1, Math.round((closed - created) / 3600000))}h` : ageMs > 86400000 ? `${Math.floor(ageMs / 86400000)}d` : `${Math.max(1, Math.round(ageMs / 3600000))}h`,
+  };
+}
+
+function mapTimeline(raw: any): TimelineEvent {
+  return {
+    type: raw.event_type ?? raw.type ?? 'note',
+    desc: raw.description ?? raw.title ?? '',
+    analyst: raw.user ?? raw.analyst ?? '',
+    time: raw.timestamp ? new Date(raw.timestamp).toLocaleTimeString() : (raw.time ?? ''),
+  };
+}
+
 function formatDuration(ms: number): string {
   const hrs = ms / 3600000;
   if (hrs < 1) return `${Math.round(hrs * 60)}m`;
@@ -59,7 +87,7 @@ export default function SOC() {
         api.get('/alerts', { params: { status: 'new' } }),
       ]);
       const incData = incidentsRes.data;
-      setIncidents(Array.isArray(incData) ? incData : incData.items ?? []);
+      setIncidents((Array.isArray(incData) ? incData : incData.items ?? []).map(mapIncident));
       const alertsData = alertsRes.data;
       const count = typeof alertsData === 'number'
         ? alertsData
@@ -79,7 +107,7 @@ export default function SOC() {
     try {
       const res = await api.get('/incidents/INC-2026-145/timeline');
       if (Array.isArray(res.data) && res.data.length > 0) {
-        setTimeline(res.data);
+        setTimeline(res.data.map(mapTimeline));
       }
     } catch {
       // Keep fallback timeline on error

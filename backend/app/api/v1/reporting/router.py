@@ -192,18 +192,20 @@ async def vulnerability_report(
         select(func.count()).select_from(Alert).where(Alert.severity == "medium")
     )
 
+    critical_count = critical_alerts.scalar() or 0
+    high_count = high_alerts.scalar() or 0
+    medium_count = medium_alerts.scalar() or 0
+
     return {
         "report_type": "vulnerability",
         "generated_at": utcnow().isoformat(),
         "severity_breakdown": {
-            "critical": critical_alerts.scalar() or 0,
-            "high": high_alerts.scalar() or 0,
-            "medium": medium_alerts.scalar() or 0,
+            "critical": critical_count,
+            "high": high_count,
+            "medium": medium_count,
         },
         "key_metrics": {
-            "open_alerts": (critical_alerts.scalar() or 0)
-            + (high_alerts.scalar() or 0)
-            + (medium_alerts.scalar() or 0),
+            "open_alerts": critical_count + high_count + medium_count,
         },
     }
 
@@ -217,9 +219,9 @@ async def audit_report(
     active_alerts = await db.execute(
         select(func.count()).select_from(Alert).where(Alert.status.notin_(["closed", "resolved"]))
     )
-    recent_events = await db.execute(
-        select(func.count()).select_from(SIEMEvent).order_by(SIEMEvent.timestamp.desc()).limit(1)
-    )
+    total_events = (
+        await db.execute(select(func.count()).select_from(SIEMEvent))
+    ).scalar() or 0
 
     return {
         "report_type": "audit",
@@ -227,9 +229,9 @@ async def audit_report(
         "summary": {
             "total_users": total_users.scalar() or 0,
             "active_alerts": active_alerts.scalar() or 0,
-            "total_siem_events": recent_events.scalar() or 0,
+            "total_siem_events": total_events,
         },
         "key_metrics": {
-            "events_ingested": recent_events.scalar() or 0,
+            "events_ingested": total_events,
         },
     }

@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 @celery_app.task(name="tasks.process_event")
 def process_event(event_data: dict) -> dict:
     """Process a security event through the SIEM pipeline."""
-    return asyncio.get_event_loop().run_until_complete(_process_event_async(event_data))
+    return asyncio.run(_process_event_async(event_data))
 
 
 async def _process_event_async(event_data: dict) -> dict:
@@ -42,7 +42,7 @@ async def _run_detection_rules(event_data: dict) -> None:
 
 @celery_app.task(name="tasks.index_elasticsearch")
 def index_elasticsearch(index: str, doc_id: str, body: dict) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_index_es_async(index, doc_id, body))
+    return asyncio.run(_index_es_async(index, doc_id, body))
 
 
 async def _index_es_async(index: str, doc_id: str, body: dict) -> dict:

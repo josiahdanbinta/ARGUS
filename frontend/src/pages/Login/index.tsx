@@ -1,4 +1,5 @@
 ﻿import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Zap, Mail, Lock, User, Building2, ShieldCheck } from 'lucide-react';
 import { useAuth, MFARequiredError } from '../../contexts/AuthContext';
 
@@ -326,6 +327,16 @@ export default function LoginPage() {
               />
             </div>
             {errors.password && <p className={errorClass}>{errors.password}</p>}
+            {mode === 'login' && (
+              <div className="flex justify-end mt-1">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-gray-500 hover:text-argus-400 transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            )}
           </div>
 
           {mode === 'register' && (

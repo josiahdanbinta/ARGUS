@@ -6,15 +6,29 @@ import {
 import api from '../../api/client';
 
 interface Endpoint {
-  id: number;
+  id: string;
   hostname: string;
   os: string;
   ipAddress: string;
-  agentStatus: 'online' | 'offline';
-  isolationStatus: 'normal' | 'isolated';
+  agentStatus: 'online' | 'offline' | 'active' | 'inactive';
+  isolationStatus: 'normal' | 'isolated' | 'none';
   cpu: number;
   memory: number;
   lastHeartbeat: string;
+}
+
+function mapEndpoint(raw: any): Endpoint {
+  return {
+    id: raw.id,
+    hostname: raw.hostname ?? 'unknown',
+    os: raw.operating_system ?? 'Unknown',
+    ipAddress: raw.ip_address ?? '-',
+    agentStatus: raw.agent_status === 'active' ? 'online' : raw.agent_status ?? 'offline',
+    isolationStatus: raw.isolation_status ?? 'none',
+    cpu: raw.cpu_usage ?? 0,
+    memory: raw.memory_usage ?? 0,
+    lastHeartbeat: raw.last_heartbeat ?? '-',
+  };
 }
 
 interface ResponseAction {
@@ -62,7 +76,7 @@ export default function EDR() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [isolating, setIsolating] = useState<number | null>(null);
+  const [isolating, setIsolating] = useState<string | null>(null);
   const [isolateError, setIsolateError] = useState('');
 
   const [killModalOpen, setKillModalOpen] = useState(false);
@@ -76,7 +90,8 @@ export default function EDR() {
     setError('');
     try {
       const { data } = await api.get('/edr/endpoints');
-      setEndpoints(Array.isArray(data) ? data : data.items ?? []);
+      const raw = Array.isArray(data) ? data : data.items ?? [];
+      setEndpoints(raw.map(mapEndpoint));
     } catch (err: any) {
       setError(err.response?.data?.message || err.message || 'Failed to load endpoints');
     } finally {
@@ -88,7 +103,7 @@ export default function EDR() {
     fetchEndpoints();
   }, [fetchEndpoints]);
 
-  const handleIsolate = async (endpointId: number) => {
+  const handleIsolate = async (endpointId: string) => {
     setIsolating(endpointId);
     setIsolateError('');
     try {
@@ -136,9 +151,9 @@ export default function EDR() {
 
   const filteredEndpoints = endpoints.filter(
     (e) =>
-      e.hostname.toLowerCase().includes(search.toLowerCase()) ||
-      e.os.toLowerCase().includes(search.toLowerCase()) ||
-      e.ipAddress.toLowerCase().includes(search.toLowerCase())
+      (e.hostname ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (e.os ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (e.ipAddress ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   const onlineCount = endpoints.filter((e) => e.agentStatus === 'online').length;

@@ -3,7 +3,7 @@ import { Workflow, Play, Clock, CheckCircle, Plus, Zap, SlidersHorizontal, Rotat
 import api from '../../api/client';
 
 interface Playbook {
-  id: number;
+  id: string;
   name: string;
   triggerType: string;
   enabled: boolean;
@@ -12,7 +12,7 @@ interface Playbook {
 }
 
 interface Workflow {
-  id: number;
+  id: string;
   name: string;
   status: 'Draft' | 'Active' | 'Archived';
   stepsCount: number;
@@ -20,11 +20,42 @@ interface Workflow {
 }
 
 interface Job {
-  id: number;
+  id: string;
   playbookName: string;
   status: 'Running' | 'Completed' | 'Failed';
   started: string;
   duration: string;
+}
+
+function mapPlaybook(raw: any): Playbook {
+  return {
+    id: raw.id,
+    name: raw.name,
+    triggerType: raw.trigger_type ?? 'New Alert',
+    enabled: raw.is_enabled,
+    lastExecuted: raw.last_executed ?? '-',
+    executionCount: raw.execution_count ?? 0,
+  };
+}
+
+function mapWorkflow(raw: any): Workflow {
+  return {
+    id: raw.id,
+    name: raw.name,
+    status: (raw.status ?? 'Draft').charAt(0).toUpperCase() + (raw.status ?? 'Draft').slice(1),
+    stepsCount: 0,
+    created: raw.created_at ?? '-',
+  };
+}
+
+function mapJob(raw: any): Job {
+  return {
+    id: raw.id,
+    playbookName: raw.name ?? raw.playbook_id ?? '-',
+    status: (raw.status ?? 'pending').charAt(0).toUpperCase() + (raw.status ?? 'pending').slice(1),
+    started: raw.started_at ?? raw.created_at ?? '-',
+    duration: '-',
+  };
 }
 
 const triggerStyle: Record<string, string> = {
@@ -59,7 +90,7 @@ export default function SOARPage() {
   const [wfError, setWfError] = useState<string | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
 
-  const [executing, setExecuting] = useState<number | null>(null);
+  const [executing, setExecuting] = useState<string | null>(null);
 
   const fetchPlaybooks = useCallback(async () => {
     setPbLoading(true);
@@ -67,7 +98,7 @@ export default function SOARPage() {
     try {
       const { data } = await api.get('/soar/playbooks', { params: { page: 1, page_size: 50 } });
       const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
-      setPlaybooks(items);
+      setPlaybooks(items.map(mapPlaybook));
     } catch {
       setPbError('Failed to load playbooks');
     } finally {
@@ -81,7 +112,7 @@ export default function SOARPage() {
     try {
       const { data } = await api.get('/soar/workflows', { params: { page: 1, page_size: 50 } });
       const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
-      setWorkflows(items);
+      setWorkflows(items.map(mapWorkflow));
     } catch {
       setWfError('Failed to load workflows');
     } finally {
@@ -95,7 +126,7 @@ export default function SOARPage() {
     try {
       const { data } = await api.get('/soar/jobs', { params: { page: 1, page_size: 10 } });
       const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
-      setJobs(items);
+      setJobs(items.map(mapJob));
     } catch {
       setJobError('Failed to load jobs');
     } finally {
@@ -109,13 +140,13 @@ export default function SOARPage() {
     fetchJobs();
   }, [fetchPlaybooks, fetchWorkflows, fetchJobs]);
 
-  const togglePlaybook = async (id: number) => {
+  const togglePlaybook = async (id: string) => {
     const current = playbooks.find((p) => p.id === id);
     if (!current) return;
     const updated = { ...current, enabled: !current.enabled };
     setPlaybooks((prev) => prev.map((p) => (p.id === id ? updated : p)));
     try {
-      await api.patch(`/soar/playbooks/${id}`, { enabled: updated.enabled });
+      await api.put(`/soar/playbooks/${id}`, { is_enabled: updated.enabled });
     } catch {
       setPlaybooks((prev) => prev.map((p) => (p.id === id ? current : p)));
     }
@@ -124,16 +155,20 @@ export default function SOARPage() {
   const handleCreatePlaybook = async () => {
     const name = prompt('Enter playbook name:');
     if (!name?.trim()) return;
+    const trigger = prompt('Enter trigger type (e.g. New Alert, Critical Alert, IOC Match, Scheduled):');
     try {
-      const { data } = await api.post('/soar/playbooks', { name: name.trim() });
+      const { data } = await api.post('/soar/playbooks', {
+        name: name.trim(),
+        trigger_type: (trigger && trigger.trim()) ? trigger.trim() : 'New Alert',
+      });
       const created = data.data ?? data;
-      setPlaybooks((prev) => [...prev, created]);
+      setPlaybooks((prev) => [...prev, mapPlaybook(created)]);
     } catch {
       alert('Failed to create playbook');
     }
   };
 
-  const handleExecute = async (id: number) => {
+  const handleExecute = async (id: string) => {
     setExecuting(id);
     try {
       await api.post(`/soar/playbooks/${id}/execute`);

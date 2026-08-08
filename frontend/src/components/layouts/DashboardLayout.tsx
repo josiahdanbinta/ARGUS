@@ -5,7 +5,8 @@ import { useAppStore } from '../../store';
 import {
   LayoutDashboard, Bell, ShieldAlert, Activity, Radio, Crosshair, Server,
   Workflow, Shield, FileSearch, FileText, Users, Bot, Globe,
-  ChevronLeft, ChevronRight, Menu, Search, LogOut, Settings, Zap, Download
+  ChevronLeft, ChevronRight, Menu, Search, LogOut, Settings, Zap, Download,
+  Flame
 } from 'lucide-react';
 
 const navItems = [
@@ -18,6 +19,7 @@ const navItems = [
   { path: '/agents', label: 'Agents', icon: Download },
   { path: '/assets', label: 'Assets', icon: Server },
   { path: '/soar', label: 'SOAR', icon: Workflow },
+  { path: '/detections', label: 'Detections', icon: Flame },
   { path: '/threat-intelligence', label: 'Threat Intel', icon: Globe },
   { path: '/mitre', label: 'MITRE ATT&CK', icon: Shield },
   { path: '/search', label: 'Search', icon: Search },

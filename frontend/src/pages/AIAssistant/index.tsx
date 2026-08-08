@@ -4,6 +4,7 @@ import {
   Bug, Binary, ClipboardCheck, Loader2, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import api from '../../api/client';
+import { useAppStore } from '../../store';
 
 type AgentType =
   | 'SOC Analyst'
@@ -26,6 +27,12 @@ interface ChatSession {
   updated_at: string;
 }
 
+interface ProviderOption {
+  provider: string;
+  models: string[];
+  available: boolean;
+}
+
 const AGENT_TYPES: AgentType[] = [
   'SOC Analyst',
   'Threat Hunter',
@@ -35,6 +42,16 @@ const AGENT_TYPES: AgentType[] = [
   'Executive Advisor',
   'Compliance Advisor',
 ];
+
+const AGENT_ROLES: Record<string, string[]> = {
+  'SOC Analyst': ['super_admin', 'security_admin', 'soc_manager', 'tier1_analyst', 'tier2_analyst', 'tier3_analyst', 'incident_responder', 'read_only'],
+  'Threat Hunter': ['super_admin', 'security_admin', 'soc_manager', 'threat_hunter', 'tier3_analyst'],
+  'Malware Analyst': ['super_admin', 'security_admin', 'soc_manager', 'tier3_analyst', 'incident_responder'],
+  'Detection Engineer': ['super_admin', 'security_admin', 'soc_manager', 'tier3_analyst'],
+  'DFIR Assistant': ['super_admin', 'security_admin', 'soc_manager', 'tier2_analyst', 'tier3_analyst', 'incident_responder'],
+  'Executive Advisor': ['super_admin', 'security_admin', 'soc_manager'],
+  'Compliance Advisor': ['super_admin', 'security_admin', 'compliance_officer', 'auditor'],
+};
 
 const AGENT_ICONS: Record<string, React.ReactNode> = {
   'SOC Analyst': <Shield className="w-4 h-4" />,
@@ -63,6 +80,9 @@ const WELCOME_MESSAGE: Message = {
 };
 
 export default function AIAssistant() {
+  const { user } = useAppStore();
+  const userRole = user?.role ?? 'read_only';
+  const allowedAgents = AGENT_TYPES.filter((a) => (AGENT_ROLES[a] ?? []).includes(userRole));
   const [selectedAgent, setSelectedAgent] = useState<AgentType>('SOC Analyst');
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
@@ -73,6 +93,20 @@ export default function AIAssistant() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [activeProvider, setActiveProvider] = useState('opencode');
+
+  const fetchProviders = useCallback(async () => {
+    try {
+      const { data } = await api.get('/ai/models');
+      const raw = Array.isArray(data) ? data : data.items ?? data.models ?? [];
+      setProviders(raw);
+      const first = raw.find((p: ProviderOption) => p.available);
+      if (first) setActiveProvider(first.provider);
+    } catch {
+      setProviders([]);
+    }
+  }, []);
 
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -89,7 +123,8 @@ export default function AIAssistant() {
 
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions]);
+    fetchProviders();
+  }, [fetchSessions, fetchProviders]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,7 +147,7 @@ export default function AIAssistant() {
       const { data } = await api.post('/ai/chat', {
         message: content,
         session_id: sessionId,
-        provider: 'opencode',
+        provider: activeProvider,
         agent_type: selectedAgent,
       });
       const reply = data.reply ?? data.response ?? data.message ?? data.content ?? 'No response from AI.';
@@ -124,11 +159,17 @@ export default function AIAssistant() {
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err: any) {
       const errorText = err.response?.data?.detail ?? err.message ?? 'AI service is currently unavailable';
-      setAiError(errorText);
+      const friendly =
+        String(errorText).includes('403') || String(errorText).includes('Forbidden')
+          ? 'The primary AI provider (OpenCode) is blocked. Configure an alternative provider key in backend env (OPENAI_API_KEY, ANTHROPIC_API_KEY, AZURE_OPENAI_API_KEY, or GROQ_API_KEY) and it will be used automatically.'
+          : String(errorText).includes('All AI providers failed')
+            ? 'All AI providers failed. Configure at least one working provider key (OpenAI, Anthropic, Azure OpenAI, or Groq) in the backend environment variables.'
+            : errorText;
+      setAiError(friendly);
       const aiMsg: Message = {
         id: Date.now() + 1,
         role: 'ai',
-        content: `Error: ${errorText}`,
+        content: `Error: ${friendly}`,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } finally {
@@ -163,7 +204,10 @@ export default function AIAssistant() {
           </h2>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {AGENT_TYPES.map((agent) => (
+          {allowedAgents.length === 0 && (
+            <p className="text-xs text-gray-500 text-center py-3">No agents available for your role.</p>
+          )}
+          {allowedAgents.map((agent) => (
             <button
               key={agent}
               onClick={() => setSelectedAgent(agent)}
@@ -236,6 +280,12 @@ export default function AIAssistant() {
                 AI-powered security operations assistant
               </p>
             </div>
+            {providers.length > 0 && (
+              <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-600/10 border border-green-600/30 text-sm text-green-400">
+                <Zap className="w-4 h-4" />
+                {activeProvider}
+              </span>
+            )}
             {isAiResponding && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600/10 border border-blue-600/30 text-sm text-blue-400">
                 <Loader2 className="w-4 h-4 animate-spin" />

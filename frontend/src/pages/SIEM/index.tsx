@@ -3,10 +3,10 @@ import { Activity, GitBranch, HardDrive, Search, Filter, Zap, RefreshCw, AlertTr
 import api from '../../api/client';
 
 interface Event {
-  id: number;
+  id: string;
   timestamp: string;
   eventType: string;
-  eventId: string;
+  eventId: number | null;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   source: string;
   hostname: string;
@@ -16,12 +16,40 @@ interface Event {
 }
 
 interface DetectionRule {
-  id: number;
+  id: string;
   name: string;
   type: 'Sigma' | 'YARA' | 'Correlation' | 'Threshold';
   severity: 'critical' | 'high' | 'medium' | 'low';
   mitre: string;
   enabled: boolean;
+}
+
+function mapEvent(raw: any): Event {
+  return {
+    id: raw.id,
+    timestamp: raw.timestamp,
+    eventType: raw.event_type ?? '',
+    eventId: raw.event_id ?? null,
+    severity: raw.severity ?? 'low',
+    source: raw.source ?? '',
+    hostname: raw.hostname ?? '',
+    user: raw.user ?? '',
+    message: raw.message ?? '',
+    riskScore: raw.risk_score ?? 0,
+  };
+}
+
+function mapRule(raw: any): DetectionRule {
+  return {
+    id: raw.id,
+    name: raw.name,
+    type: (raw.rule_type ?? raw.type ?? '')
+      .charAt(0)
+      .toUpperCase() + (raw.rule_type ?? raw.type ?? '').slice(1),
+    severity: raw.severity ?? 'medium',
+    mitre: raw.mitre_techniques ?? '',
+    enabled: raw.is_enabled,
+  };
 }
 
 const severityLabel: Record<string, string> = {
@@ -46,7 +74,8 @@ export default function SIEM() {
     setEventsError('');
     try {
       const { data } = await api.get('/siem/events', { params: { page: 1, page_size: 50 } });
-      setEvents(Array.isArray(data) ? data : data.items ?? []);
+      const raw = Array.isArray(data) ? data : data.items ?? [];
+      setEvents(raw.map(mapEvent));
     } catch (err: any) {
       setEventsError(err.response?.data?.message || err.message || 'Failed to load events');
     } finally {
@@ -59,7 +88,8 @@ export default function SIEM() {
     setRulesError('');
     try {
       const { data } = await api.get('/siem/rules', { params: { page: 1, page_size: 50 } });
-      setRules(Array.isArray(data) ? data : data.items ?? []);
+      const raw = Array.isArray(data) ? data : data.items ?? [];
+      setRules(raw.map(mapRule));
     } catch (err: any) {
       setRulesError(err.response?.data?.message || err.message || 'Failed to load rules');
     } finally {
@@ -74,17 +104,17 @@ export default function SIEM() {
 
   const filteredEvents = events.filter(
     (e) =>
-      e.message.toLowerCase().includes(search.toLowerCase()) ||
-      e.hostname.toLowerCase().includes(search.toLowerCase()) ||
-      e.eventType.toLowerCase().includes(search.toLowerCase()) ||
-      e.user.toLowerCase().includes(search.toLowerCase())
+      (e.message ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (e.hostname ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (e.eventType ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (e.user ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   const filteredRules = rules.filter(
     (r) =>
-      r.name.toLowerCase().includes(search.toLowerCase()) ||
-      r.type.toLowerCase().includes(search.toLowerCase()) ||
-      r.mitre.toLowerCase().includes(search.toLowerCase())
+      (r.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.type ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (r.mitre ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   const criticalCount = events.filter((e) => e.severity === 'critical').length;

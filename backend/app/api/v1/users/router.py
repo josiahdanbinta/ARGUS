@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
@@ -110,7 +111,9 @@ async def list_roles(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    result = await db.execute(select(Role).order_by(Role.created_at.desc()))
+    result = await db.execute(
+        select(Role).options(selectinload(Role.permissions)).order_by(Role.created_at.desc())
+    )
     roles = result.scalars().all()
     return [RoleResponse.model_validate(r) for r in roles]
 
@@ -148,8 +151,11 @@ async def create_role(
         created_at=utcnow(),
     )
     db.add(audit)
-    await db.flush()
-    await db.refresh(role)
+    await db.commit()
+    result = await db.execute(
+        select(Role).where(Role.id == role.id).options(selectinload(Role.permissions))
+    )
+    role = result.scalar_one()
     return RoleResponse.model_validate(role)
 
 
@@ -184,8 +190,11 @@ async def update_role(
         created_at=utcnow(),
     )
     db.add(audit)
-    await db.flush()
-    await db.refresh(role)
+    await db.commit()
+    result = await db.execute(
+        select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
+    )
+    role = result.scalar_one()
     return RoleResponse.model_validate(role)
 
 

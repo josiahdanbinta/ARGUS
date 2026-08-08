@@ -51,12 +51,16 @@ export default function MITREPage() {
     setLoading(true);
     try {
       const { data } = await api.get('/mitre/tactics');
-      const items = data.items ?? data.data ?? data.results ?? data ?? [];
-      const mapped: Tactic[] = items.map((t: any) => ({
-        name: t.name ?? t.id ?? '',
-        id: t.id ?? t.technique_id ?? '',
-        count: t.count ?? t.techniques_count ?? 0,
-      }));
+      const items = Array.isArray(data) ? data : data.items ?? data.data ?? data.results ?? [];
+      const mapped: Tactic[] = items.map((t: any) =>
+        typeof t === 'string'
+          ? { name: t, id: t, count: 0 }
+          : {
+              name: t.name ?? t.id ?? '',
+              id: t.id ?? t.technique_id ?? '',
+              count: t.count ?? t.techniques_count ?? 0,
+            }
+      );
       setTactics(mapped);
     } catch {
       setTactics([]);

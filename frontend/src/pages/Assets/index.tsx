@@ -21,6 +21,28 @@ interface Asset {
   status: string;
 }
 
+function mapAsset(raw: any): Asset {
+  return {
+    id: raw.id,
+    name: raw.name,
+    type: raw.asset_type ?? raw.type ?? 'Server',
+    hostname: raw.hostname ?? '-',
+    ip: raw.ip_address ?? '-',
+    os: raw.operating_system ?? 'Unknown',
+    criticality: raw.criticality ?? 'low',
+    riskScore: raw.risk_score ?? 0,
+    lastSeen: raw.last_seen ?? '-',
+    status: raw.is_active === false ? 'Offline' : (raw.status ?? 'Online'),
+  };
+}
+
+function isRecentlySeen(lastSeen: string): boolean {
+  if (!lastSeen || lastSeen === '-') return false;
+  const ts = new Date(lastSeen).getTime();
+  if (Number.isNaN(ts)) return false;
+  return Date.now() - ts < 24 * 60 * 60 * 1000;
+}
+
 const TYPE_ICONS: Record<string, typeof Server> = {
   Server: Server,
   Laptop: Monitor,
@@ -70,7 +92,8 @@ export default function Assets() {
     setError(null);
     try {
       const { data } = await api.get("/assets", { params: { page: 1, page_size: 50 } });
-      setAssets(data.items ?? data.data ?? data.results ?? data ?? []);
+      const raw = data.items ?? data.data ?? data.results ?? data ?? [];
+      setAssets((Array.isArray(raw) ? raw : []).map(mapAsset));
     } catch (err: any) {
       setError(err.response?.data?.detail ?? err.message ?? "Failed to load assets");
     } finally {
@@ -86,9 +109,7 @@ export default function Assets() {
     const total = assets.length;
     const critical = assets.filter((a) => a.criticality === "critical").length;
     const highRisk = assets.filter((a) => a.criticality === "high").length;
-    const recentlySeen = assets.filter(
-      (a) => !a.lastSeen.includes("day") && !a.lastSeen.includes("hour")
-    ).length;
+    const recentlySeen = assets.filter((a) => isRecentlySeen(a.lastSeen)).length;
     return { total, critical, highRisk, recentlySeen };
   }, [assets]);
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.elasticsearch import get_elasticsearch
@@ -13,6 +14,27 @@ from app.models.notification import AuditLog
 from app.models.user import User
 from app.schemas.asset import EndpointUpdate, EndpointResponse, EndpointHealthCheck
 from app.utils import generate_uuid, utcnow
+
+
+def _serialize_endpoint(ep: Endpoint) -> EndpointResponse:
+    data = {
+        "id": ep.id,
+        "asset_id": ep.asset_id,
+        "hostname": ep.asset.hostname if ep.asset else None,
+        "operating_system": ep.asset.operating_system if ep.asset else None,
+        "ip_address": ep.asset.ip_address if ep.asset else None,
+        "agent_version": ep.agent_version,
+        "agent_status": ep.agent_status,
+        "isolation_status": ep.isolation_status,
+        "cpu_usage": ep.cpu_usage,
+        "memory_usage": ep.memory_usage,
+        "disk_usage": ep.disk_usage,
+        "policy_id": ep.policy_id,
+        "last_heartbeat": ep.last_heartbeat,
+        "created_at": ep.created_at,
+        "updated_at": ep.updated_at,
+    }
+    return EndpointResponse.model_validate(data)
 
 
 class KillProcessRequest(BaseModel):
@@ -40,10 +62,11 @@ async def list_endpoints(
         select(Endpoint)
         .join(Asset, Endpoint.asset_id == Asset.id)
         .where(Asset.organization_id == current_user.organization_id)
+        .options(selectinload(Endpoint.asset))
         .order_by(Asset.hostname.nulls_last())
     )
     endpoints = result.scalars().all()
-    return [EndpointResponse.model_validate(ep) for ep in endpoints]
+    return [_serialize_endpoint(ep) for ep in endpoints]
 
 
 @router.get("/endpoints/{endpoint_id}", response_model=EndpointResponse)
@@ -56,11 +79,12 @@ async def get_endpoint(
         select(Endpoint)
         .join(Asset, Endpoint.asset_id == Asset.id)
         .where(Endpoint.id == endpoint_id, Asset.organization_id == current_user.organization_id)
+        .options(selectinload(Endpoint.asset))
     )
     endpoint = result.scalar_one_or_none()
     if not endpoint:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
-    return EndpointResponse.model_validate(endpoint)
+    return _serialize_endpoint(endpoint)
 
 
 @router.post("/endpoints/{endpoint_id}/heartbeat", response_model=EndpointResponse)
@@ -99,8 +123,14 @@ async def endpoint_heartbeat(
         asset.last_seen = utcnow()
 
     await db.commit()
-    await db.refresh(endpoint)
-    return EndpointResponse.model_validate(endpoint)
+
+    result = await db.execute(
+        select(Endpoint)
+        .where(Endpoint.id == endpoint_id)
+        .options(selectinload(Endpoint.asset))
+    )
+    endpoint = result.scalar_one()
+    return _serialize_endpoint(endpoint)
 
 
 @router.post("/endpoints/{endpoint_id}/isolate", response_model=EndpointResponse)
@@ -113,6 +143,7 @@ async def isolate_endpoint(
         select(Endpoint)
         .join(Asset, Endpoint.asset_id == Asset.id)
         .where(Endpoint.id == endpoint_id, Asset.organization_id == current_user.organization_id)
+        .options(selectinload(Endpoint.asset))
     )
     endpoint = result.scalar_one_or_none()
     if not endpoint:
@@ -134,8 +165,11 @@ async def isolate_endpoint(
     db.add(audit)
 
     await db.commit()
-    await db.refresh(endpoint)
-    return EndpointResponse.model_validate(endpoint)
+    result = await db.execute(
+        select(Endpoint).where(Endpoint.id == endpoint_id).options(selectinload(Endpoint.asset))
+    )
+    endpoint = result.scalar_one()
+    return _serialize_endpoint(endpoint)
 
 
 @router.post("/endpoints/{endpoint_id}/unisolate", response_model=EndpointResponse)
@@ -148,6 +182,7 @@ async def unisolate_endpoint(
         select(Endpoint)
         .join(Asset, Endpoint.asset_id == Asset.id)
         .where(Endpoint.id == endpoint_id, Asset.organization_id == current_user.organization_id)
+        .options(selectinload(Endpoint.asset))
     )
     endpoint = result.scalar_one_or_none()
     if not endpoint:
@@ -169,8 +204,11 @@ async def unisolate_endpoint(
     db.add(audit)
 
     await db.commit()
-    await db.refresh(endpoint)
-    return EndpointResponse.model_validate(endpoint)
+    result = await db.execute(
+        select(Endpoint).where(Endpoint.id == endpoint_id).options(selectinload(Endpoint.asset))
+    )
+    endpoint = result.scalar_one()
+    return _serialize_endpoint(endpoint)
 
 
 @router.post("/endpoints/{endpoint_id}/kill-process")
